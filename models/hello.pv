@@ -1,0 +1,20 @@
+(* hello.pv *)
+
+free c: channel.
+
+free SometimesThis: bitstring [private].
+free AlwaysThat: bitstring [private].
+
+event evSometimes.
+event evAlways.
+
+query event(evSometimes) ==> event(evAlways).
+
+process
+    out(c, AlwaysThat);
+    in(c, x: bitstring);
+    if x = SometimesThis then
+       event evSometimes;
+       event evAlways
+    else
+       event evAlways

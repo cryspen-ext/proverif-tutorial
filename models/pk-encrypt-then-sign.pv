@@ -1,0 +1,124 @@
+(* Public untrusted network channel *)
+free ch: channel.
+
+(* Signature and verification keys *)
+type skey.
+type vkey.
+fun vk(skey):vkey.
+
+(* Encryption and decryption keys *)
+type dkey.
+type ekey.
+fun ek(dkey):ekey.
+
+(* Public-Key Encryption *)
+fun penc(ekey,bitstring): bitstring.
+reduc forall dk:dkey, m:bitstring;
+      pdec(dk,penc(ek(dk),m)) = m.
+
+(* Public-Key Signatures *)
+fun sign(skey,bitstring): bitstring.
+reduc forall sk:skey, m:bitstring;
+      verify(vk(sk),m,sign(sk,m)) = true.
+
+(* Protocol:
+      I -> R: sign(skI,penc(pkR,req))
+      R -> I: sign(skR,penc(pkI,f(resp)))
+*)
+
+(* Messages *)
+fun request(vkey,bitstring): bitstring [data].
+fun response(vkey,bitstring): bitstring [data].
+
+(* Protocol Events *)
+event SendReq(vkey,vkey,bitstring).
+event RecvReq(vkey,vkey,bitstring).
+event SendResp(vkey,vkey,bitstring,bitstring).
+event RecvResp(vkey,vkey,bitstring,bitstring).
+event Compromised(vkey).
+
+(* The following processes show the reflection attack on PSK-RPC.
+   To fix the protocol and prevent the attack, comment the lines
+   marked with BUG and uncomment the lines marked with FIX *)
+
+(* Process for Initiator Role *)
+let I(skI:skey,dkI:dkey,
+      vkR:vkey,ekR:ekey,
+      req:bitstring) =
+    let vkI = vk(skI) in
+    event SendReq(vkI,vkR,req);
+    let c = penc(ekR,request(vkI,req)) in
+    out (ch,(c,sign(skI,c)));
+    in (ch,(resp_msg:bitstring,resp_sig:bitstring));
+    if verify(vkR,resp_msg,resp_sig) then (
+       let response(vkR',resp) = pdec(dkI,resp_msg) in
+(*BUG*) (* if vkR = vkR' then *)
+       event RecvResp(vkI,vkR,req,resp)).
+
+(* Process for Responder Role *)
+fun f(bitstring):bitstring [private].
+let R(skR:skey,dkR:dkey,
+      vkI:vkey,ekI:ekey) =
+    let vkR = vk(skR) in
+    in (ch,(req_msg:bitstring,req_sig:bitstring));
+    if verify(vkI,req_msg,req_sig) then (
+        let request(vkI',m) = pdec(dkR,req_msg) in
+(*BUG*) (* if vkI = vkI' then  *)
+	(event RecvReq(vkI,vkR,m);
+	 let resp = f(m) in
+	 event SendResp(vkI,vkR,m,resp);
+	 let c = penc(ekI,response(vkR,resp)) in
+	 out (ch,(c,sign(skR,c))))).
+
+
+(* Test Scenario *)
+
+(* Private Keys for honest A, B, and a compromised principal O *)
+free skA:skey [private].
+free skB:skey [private].
+free dkA:dkey [private].
+free dkB:dkey [private].
+free skO:skey.
+free dkO:dkey.
+
+(* Secret Requests send by A and B *)
+free reqAB:bitstring [private].
+free reqAB':bitstring [private].
+free reqBA:bitstring [private].
+free reqAO:bitstring.
+free reqOB:bitstring.
+
+(* Main process: any number of sessions between A and B *)
+
+let main =
+    !I(skA,dkA,vk(skB),ek(dkB),reqAB) |
+    !R(skB,dkB,vk(skA),ek(dkA)) |
+    !I(skB,dkB,vk(skA),ek(dkA),reqBA) |
+    !R(skA,dkA,vk(skB),ek(dkB)) |
+    !I(skA,dkA,vk(skO),ek(dkO),reqAO) |
+    !R(skB,dkB,vk(skO),ek(dkO)) |
+    out(ch,(vk(skA),ek(dkA),vk(skB),ek(dkB),skO,dkO)).
+
+(* SECURITY GOALS *)
+
+(* Secrecy Goals: reqAB, f(reqAB), reqBA, f(reqBA) should be secret *)
+query attacker(reqAB).
+query attacker(f(reqAB)).
+query attacker(reqBA).
+query attacker(f(reqBA)).
+
+(* Authentication Goals, stated as correspondences between protocol events *)
+query req:bitstring;
+      event(RecvReq(vk(skA),vk(skB),req)) ==>
+      event(SendReq(vk(skA),vk(skB),req)).
+query req:bitstring,resp:bitstring;
+      event(RecvResp(vk(skA),vk(skB),req,resp)) ==>
+      event(SendResp(vk(skA),vk(skB),req,resp)).
+
+process main
+
+
+
+
+
+
