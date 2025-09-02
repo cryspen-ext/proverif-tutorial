@@ -1,0 +1,60 @@
+(* Public untrusted network channel *)
+free ch: channel.
+
+(* An empty bitstring *)
+free empty: bitstring.
+
+(* Signature and verification keys *)
+type skey.
+type vkey.
+fun skey2vkey(skey):vkey.
+
+(* Public-Key Signatures *)
+fun sign(skey,bitstring): bitstring.
+reduc forall sk:skey, m:bitstring;
+      verify(skey2vkey(sk),m,sign(sk,m)) = true.
+
+(* Symmetric Key *)
+type symkey.
+
+(* KDF: takes IKM, salt, info, length *)
+fun kdf(symkey,bitstring,bitstring,nat): symkey.
+
+(* AEAD: takes key, iv, associated data, message *)
+fun aead_enc(symkey, bitstring, bitstring, bitstring): bitstring.
+reduc forall k:symkey, iv:bitstring, ad:bitstring, m:bitstring;
+    aead_dec(k, iv, ad, aead_enc(k, iv, ad, m)) = m.
+
+(* Encapsulation and decapsulation keys *)
+type dkey.
+type ekey.
+fun dkey2ekey(dkey):ekey.
+
+(* Key Encapsulation Mechanism: internal functions *)
+fun kem_encap(ekey,symkey): bitstring.
+reduc forall dk:dkey, k:symkey;
+      kem_decap(dk,kem_encap(dkey2ekey(dk),k)) = k.
+
+(* Key Encapsulation Mechanism: API *)
+letfun encap(ek:ekey) =
+      new k:symkey;
+      (k, kem_encap(ek, k)).
+letfun decap(dk:dkey, ct:bitstring) =
+      kem_decap(dk,ct).      
+
+(* Public Key Encryption *)
+letfun pk_enc(ek:ekey, m:bitstring) =
+      let (k:symkey, ct0:bitstring) = encap(ek) in
+      new iv: bitstring;
+      let ct1 = aead_enc(k, iv, empty, m) in
+      (ct0, iv, ct1).
+
+letfun pk_dec(dk:dkey, ct:bitstring) =
+      let (ct0:bitstring, iv:bitstring, ct1:bitstring) = ct in
+      let k = decap(dk, ct0) in
+      let m = aead_dec(k, iv, empty, ct1) in
+      m.
+
+      
+
+
